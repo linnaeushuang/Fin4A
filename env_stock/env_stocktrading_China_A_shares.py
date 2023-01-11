@@ -40,8 +40,8 @@ class StockTradingEnv(gym.Env):
         iteration="",
         initial_buy=False,  # Use half of initial amount to buy
         hundred_each_trade=True,
-        bankrupt_pct = 0.4,
-        terminal_output = False,
+        bankrupt_pct = 0.9,
+        terminal_output = True,
         data_history_range = 4,
     ):  # The number of shares per lot must be an integer multiple of 100
 
@@ -82,9 +82,6 @@ class StockTradingEnv(gym.Env):
 
 
         self.state = self._initiate_state()
-        #print("-----new---")
-        #self._initiate_state_new()
-        #print("----new end----")
 
         
         
@@ -213,6 +210,12 @@ class StockTradingEnv(gym.Env):
         plt.close()
 
     def step(self, actions):
+        """
+        self.terminal = self.day >= len(self.df.index.unique()) - 1
+        if self.terminal:
+            self._output_terminal()
+            return self.state, self.reward, self.terminal, {}
+        """
         actions = actions * self.hmax  # actions initially is scaled between 0 to 1
         actions = actions.astype(int)  # convert into integer because we can't by fraction of shares
         if self.turbulence_threshold is not None:
@@ -221,7 +224,6 @@ class StockTradingEnv(gym.Env):
 
         self.state = torch.roll(self.state, 1, dims=0)
         self.state[0,:] = self.state[1, :]
-        #print(self.state) OK
 
         argsort_actions = np.argsort(actions)
 
@@ -234,7 +236,6 @@ class StockTradingEnv(gym.Env):
         for index in buy_index:
             actions[index] = self._buy_stock(index, actions[index])
         self.actions_memory.append(actions)
-        #print(actions)
 
         self.day += 1
         self.data = self.df.loc[self.day, :]
@@ -264,7 +265,7 @@ class StockTradingEnv(gym.Env):
             )
         self.rewards_memory.append(self.reward)
         self.reward = self.reward * self.reward_scaling        
-        self._update_terminal()
+        self.terminal = self._update_terminal()
         if self.terminal and self.terminal_output:
             self._output_terminal()
 
@@ -396,30 +397,21 @@ class StockTradingEnv(gym.Env):
 
     def _update_terminal(self):
         """time out"""
-        self.terminal = self.day >= len(self.df.index.unique()) - 1
+        if  self.day >= len(self.df.index.unique()) - 1 :
+            return True
         """bankrupt"""
-        self.terminal = self.initial_amount * self.bankrupt_pct > self.end_total_asset
+        if self.initial_amount * self.bankrupt_pct > self.end_total_asset:
+            return True
+        return False
 
     def _output_terminal(self):
         print(f"Episode: {self.episode}")
         if self.make_plots:
             self._make_plot()
-
-        end_total_asset = self.state[0] + sum(
-            np.array(self.state[1 : (self.stock_dim + 1)])
-            * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
-        )
+        end_total_asset = self.state[0,0].item()
+        for index in range(self.stock_dim):
+            end_total_asset += self.state[0, index * (2 + self.tech_indicator_list_len) + 2] * self.state[0, index * (2 + self.tech_indicator_list_len) + 1]
         df_total_value = pd.DataFrame(self.asset_memory)
-        tot_reward = (
-            self.state[0]
-            + sum(
-                np.array(self.state[1 : (self.stock_dim + 1)])
-                * np.array(
-                    self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)]
-                )
-            )
-            - self.initial_amount
-        )
         df_total_value.columns = ["account_value"]
         df_total_value["date"] = self.date_memory
         df_total_value["daily_return"] = df_total_value["account_value"].pct_change(1)
@@ -436,7 +428,6 @@ class StockTradingEnv(gym.Env):
             print(f"day: {self.day}, episode: {self.episode}")
             print(f"begin_total_asset: {self.asset_memory[0]:0.2f}")
             print(f"end_total_asset: {end_total_asset:0.2f}")
-            print(f"total_reward: {tot_reward:0.2f}")
             print(f"total_cost: {self.cost:0.2f}")
             print(f"total_trades: {self.trades}")
             if df_total_value["daily_return"].std() != 0:

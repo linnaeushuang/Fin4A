@@ -159,16 +159,8 @@ class DataProcessor:
                     )
         else:  # use talib
             final_df = pd.DataFrame()
-            print("-------talib start------")
             for i in self.dataframe.tic.unique():
                 tic_df = self.dataframe[self.dataframe.tic == i]
-                print(tic_df)
-                print(talib.MACD(
-                    tic_df["close"],
-                    fastperiod=12,
-                    slowperiod=26,
-                    signalperiod=9,
-                ))
                 (
                     tic_df.loc["macd"],
                     tic_df.loc["macd_signal"],
@@ -179,7 +171,6 @@ class DataProcessor:
                     slowperiod=26,
                     signalperiod=9,
                 )
-                print(tic_df)
                 tic_df.loc["rsi"] = talib.RSI(tic_df["close"], timeperiod=14)
                 tic_df.loc["cci"] = talib.CCI(
                     tic_df["high"],
@@ -212,14 +203,22 @@ class DataProcessor:
         pass
 
     def data_split(self, df, start, end, target_date_col="date"):
+        """there is sometion wrong with the code in this function"""
+        print("----in data split",start,end)
         """
         split the dataset into training or testing using date
         :param data: (df) pandas dataframe, start, end
         :return: (df) pandas dataframe
         """
+        print(df[target_date_col])
+        print(df[target_date_col]>=start)
+        print(df[target_date_col]<end)
         data = df[(df[target_date_col] >= start) & (df[target_date_col] < end)]
+        print(data.head())
+        print(data.tail())
         data = data.sort_values([target_date_col, "tic"], ignore_index=True)
         data.index = data[target_date_col].factorize()[0]
+        print("------end data split")
         return data
 
     def run(
